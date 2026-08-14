@@ -1,0 +1,17 @@
+*simplemulti.txt*  Selection-first multiple editing for Vim9
+
+:SimpleMultiNext             Select current/next word occurrence.
+:SimpleMultiAll              Select every exact occurrence.
+:SimpleMultiAbove            Add a cursor above.
+:SimpleMultiBelow            Add a cursor below.
+:SimpleMultiReplace [text]   Replace all selections.
+:SimpleMultiInsert [text]    Insert before all selections/cursors.
+:SimpleMultiAppend [text]    Append after all selections/cursors.
+:SimpleMultiDelete           Delete all selections.
+:SimpleMultiRemove           Remove the primary selection.
+:SimpleMultiClear            Clear selections.
+
+Default mappings are CTRL-N, CTRL-Up and CTRL-Down.  Set
+g:simplemulti_default_mappings to zero before loading to disable them.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

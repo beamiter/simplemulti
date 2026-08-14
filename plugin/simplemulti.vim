@@ -1,0 +1,50 @@
+vim9script
+
+if exists('g:loaded_simplemulti')
+  finish
+endif
+g:loaded_simplemulti = 1
+
+if v:version < 901 || !has('textprop')
+  echohl WarningMsg
+  echomsg '[SimpleMulti] Vim 9.1 with +textprop is required.'
+  echohl None
+  finish
+endif
+
+g:simplemulti_default_mappings = get(g:, 'simplemulti_default_mappings', 1)
+g:simplemulti_max_selections = get(g:, 'simplemulti_max_selections', 1000)
+
+command! SimpleMultiNext simplemulti#SelectNext()
+command! SimpleMultiAll simplemulti#SelectAll()
+command! SimpleMultiAbove simplemulti#Vertical(-1)
+command! SimpleMultiBelow simplemulti#Vertical(1)
+command! SimpleMultiRemove simplemulti#RemoveCurrent()
+command! SimpleMultiClear simplemulti#Clear()
+command! -nargs=* SimpleMultiReplace simplemulti#Edit('replace', <q-args>)
+command! -nargs=* SimpleMultiInsert simplemulti#Edit('insert', <q-args>)
+command! -nargs=* SimpleMultiAppend simplemulti#Edit('append', <q-args>)
+command! SimpleMultiDelete simplemulti#Edit('delete', '')
+command! SimpleMultiHealth simplemulti#Health()
+
+nnoremap <silent> <Plug>(simplemulti-next) <ScriptCmd>simplemulti#SelectNext()<CR>
+nnoremap <silent> <Plug>(simplemulti-all) <ScriptCmd>simplemulti#SelectAll()<CR>
+nnoremap <silent> <Plug>(simplemulti-above) <ScriptCmd>simplemulti#Vertical(-1)<CR>
+nnoremap <silent> <Plug>(simplemulti-below) <ScriptCmd>simplemulti#Vertical(1)<CR>
+nnoremap <silent> <Plug>(simplemulti-clear) <ScriptCmd>simplemulti#Clear()<CR>
+
+if g:simplemulti_default_mappings
+  nmap <C-n> <Plug>(simplemulti-next)
+  nmap <C-Up> <Plug>(simplemulti-above)
+  nmap <C-Down> <Plug>(simplemulti-below)
+endif
+
+highlight default SimpleMultiSelection cterm=reverse gui=reverse
+highlight default SimpleMultiPrimary cterm=bold,reverse gui=bold,reverse
+simplemulti#Setup()
+
+augroup SimpleMulti
+  autocmd!
+  autocmd TextChanged,TextChangedI * simplemulti#Invalidate()
+  autocmd ColorScheme * call simplemulti#SetupHighlights()
+augroup END
