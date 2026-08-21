@@ -2,7 +2,10 @@ vim9script
 
 var s_applying = false
 
-# One cached Occurrences() answer, keyed on the buffer, the word and the text.
+# One cached Occurrences() answer, keyed on the buffer, the word, the text and
+# 'iskeyword'.  The last one matters even when the word under the cursor does
+# not change: adding `-` can turn `font` in `font-size` from an occurrence into
+# a word fragment without moving b:changedtick.
 # SelectNext() used to rescan the whole buffer on every press -- 11.7 ms per
 # <C-n> on a 20000-line buffer holding three occurrences of the word, paid in
 # full again on the press that finds nothing left to select.  Now the first
@@ -40,6 +43,18 @@ def State(): dict<any>
     b:simplemulti_state = EmptyState()
   endif
   return b:simplemulti_state
+enddef
+
+# TextChanged normally clears a live selection through Invalidate(), but public
+# functions can be called from another autocmd or Vim9 function before that
+# event is delivered.  Never apply byte ranges recorded against older text.
+def ActionState(): dict<any>
+  var state = State()
+  if !s_applying && !empty(state.items) && state.changedtick != b:changedtick
+    Clear()
+    return State()
+  endif
+  return state
 enddef
 
 export def SetupHighlights()
@@ -142,6 +157,14 @@ def WordPattern(word: string): string
   return '\C\V\<' .. escape(word, '\') .. '\>'
 enddef
 
+def MaximumSelections(): number
+  # This value sits in a loop boundary and in the cache key.  A typo in a vimrc
+  # must not turn `0` into the surprising cap of one (the first hit made
+  # len(out) >= 0), or make a comparison throw halfway through a keypress.
+  var configured: any = get(g:, 'simplemulti_max_selections', 1000)
+  return type(configured) == v:t_number && configured > 0 ? configured : 1000
+enddef
+
 # This used to walk the line run by run from column 1 -- match(text, '\k\+',
 # start), matchstr() the run back out, advance, repeat -- which rescans the
 # string from each offset and is quadratic in line length.  One <C-n> with the
@@ -207,7 +230,7 @@ def Occurrences(word: string): list<dict<any>>
     return out
   endif
   var pattern = WordPattern(word)
-  var maximum = get(g:, 'simplemulti_max_selections', 1000)
+  var maximum = MaximumSelections()
   for lnum in range(1, line('$'))
     var text = getline(lnum)
     var start = 0
@@ -233,16 +256,17 @@ def CachedOccurrences(word: string): list<dict<any>>
   # Without it, `:SimpleMultiAll` with the cap at 5 and then again with it at 40
   # comes back with 5 -- a truncated selection, which is worse than the scan the
   # cache saved.
-  var maximum = get(g:, 'simplemulti_max_selections', 1000)
+  var maximum = MaximumSelections()
   if get(s_cache, 'bufnr', -1) == bufnr()
       && get(s_cache, 'word', '') ==# word
       && get(s_cache, 'changedtick', -1) == b:changedtick
+      && get(s_cache, 'iskeyword', '') ==# &l:iskeyword
       && get(s_cache, 'maximum', -1) == maximum
     return s_cache.items
   endif
   var items = Occurrences(word)
   s_cache = {bufnr: bufnr(), word: word, changedtick: b:changedtick,
-    maximum: maximum, items: items}
+    iskeyword: &l:iskeyword, maximum: maximum, items: items}
   return items
 enddef
 
@@ -265,7 +289,7 @@ export def SelectNext()
   if !&l:modifiable || &l:readonly
     return
   endif
-  var state = State()
+  var state = ActionState()
   if empty(state.items)
     var first = WordAtCursor()
     if empty(first)
@@ -305,10 +329,17 @@ export def SelectNext()
 enddef
 
 export def SelectAll()
-  var state = State()
-  if empty(state.word)
+  var state = ActionState()
+  # No selections means no live session, even if a previous zero-result scan
+  # left its word behind (for example after 'iskeyword' changed).  Re-read the
+  # cursor so one vanished word cannot lock every later SelectAll onto itself.
+  if empty(state.items)
     var first = WordAtCursor()
     if empty(first)
+      state.word = ''
+      state.keys = {}
+      state.primary = -1
+      Refresh()
       return
     endif
     state.word = first.word
@@ -330,24 +361,33 @@ export def Vertical(delta: number)
   if delta != 1 && delta != -1
     return
   endif
-  var state = State()
+  var state = ActionState()
+  var target_vcol: number
   if empty(state.items)
-    AddItem({lnum: line('.'), col: col('.'), length: 0})
+    target_vcol = virtcol('.')
+    AddItem({lnum: line('.'), col: min([col('.'), strlen(getline('.')) + 1]),
+      length: 0, vcol: target_vcol})
   endif
   var primary = state.items[state.primary]
+  target_vcol = get(primary, 'vcol', virtcol([primary.lnum, primary.col]))
   var target_line = primary.lnum + delta
   if target_line < 1 || target_line > line('$')
     return
   endif
-  AddItem({
-    lnum: target_line,
-    col: min([primary.col, strlen(getline(target_line)) + 1]),
-    length: 0,
-  })
+  var text = getline(target_line)
+  # Keep the screen column as the session walks across tabs and short lines.
+  # Clamping a short row's byte column into the next primary used to collapse
+  # every later cursor to that row's end, and a tab's one byte was mistaken for
+  # one screen cell.  Edits still clamp to the actual end of a short row; vcol
+  # only remembers where a later, longer row should land.
+  var target_col = target_vcol >= virtcol([target_line, '$'])
+    ? strlen(text) + 1 : virtcol2col(0, target_line, target_vcol)
+  AddItem({lnum: target_line, col: max([1, target_col]), length: 0,
+    vcol: target_vcol})
 enddef
 
 export def RemoveCurrent()
-  var state = State()
+  var state = ActionState()
   if state.primary < 0 || state.primary >= len(state.items)
     return
   endif
@@ -380,8 +420,9 @@ def ApplyOne(item: dict<any>, kind: string, value: string)
 enddef
 
 export def Edit(kind: string, argument: string)
-  var state = State()
-  if empty(state.items) || index(['replace', 'insert', 'append', 'delete'], kind) < 0
+  var state = ActionState()
+  if !&l:modifiable || &l:readonly || empty(state.items)
+      || index(['replace', 'insert', 'append', 'delete'], kind) < 0
     return
   endif
   var value = argument
@@ -439,5 +480,5 @@ export def Health()
   echomsg 'SimpleMulti health'
   echomsg $'  textprop: {has("textprop") ? "yes" : "no"}'
   echomsg $'  selections: {len(state.items)}'
-  echomsg $'  cap: {get(g:, "simplemulti_max_selections", 1000)}'
+  echomsg $'  cap: {MaximumSelections()}'
 enddef

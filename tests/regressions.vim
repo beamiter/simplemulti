@@ -194,6 +194,26 @@ g:simplemulti_max_selections = 1000
 simplemulti#Clear()
 bwipe!
 
+# A non-positive or mistyped cap falls back to the documented default instead
+# of turning the first hit into an accidental cap of one or raising a type
+# error from the expression mapping.
+new
+setline(1, 'alpha alpha alpha')
+cursor(1, 1)
+g:simplemulti_max_selections = 0
+simplemulti#SelectAll()
+assert_equal(3, len(Positions()), 'a zero cap unexpectedly meant one selection')
+g:simplemulti_max_selections = 'many'
+try
+  simplemulti#SelectAll()
+catch
+  assert_report('a mistyped selection cap threw: ' .. v:exception)
+endtry
+assert_equal(3, len(Positions()), 'a mistyped cap did not fall back to the default')
+g:simplemulti_max_selections = 1000
+simplemulti#Clear()
+bwipe!
+
 # --- 4. The scan is not repeated per keypress --------------------------------
 # The first <C-n> pays for the buffer walk.  Every press after it answers from
 # the cache, so ten of them together have to cost less than that first one did
@@ -282,9 +302,9 @@ simplemulti#Clear()
 bwipe!
 
 # --- 6. The cached scan follows the buffer -----------------------------------
-# The cache is keyed on {bufnr, word, b:changedtick}.  Text properties do not
-# move b:changedtick, so painting a selection must not evict it; editing the
-# text must.
+# The cache is keyed on {bufnr, word, b:changedtick, iskeyword}.  Text
+# properties do not move b:changedtick, so painting a selection must not evict
+# it; editing the text or changing the definition of a word must.
 new
 setline(1, ['alpha beta', 'alpha gamma', 'delta'])
 cursor(1, 1)
@@ -296,6 +316,44 @@ cursor(1, 1)
 simplemulti#SelectAll()
 assert_equal(3, len(Positions()),
   'the cached scan survived an edit that added an occurrence')
+simplemulti#Clear()
+
+# Changing 'iskeyword' changes the meaning of the \< / \> atoms without
+# changing either the text, b:changedtick, or the standalone word under the
+# cursor.  The prefix in `font-size` is an occurrence before `-` becomes a
+# keyword character and is not one afterwards.  No Clear() between the two
+# calls: that would discard the cache and hide this regression.
+setline(1, ['font-size font'])
+if line('$') > 1
+  deletebufline('%', 2, line('$'))
+endif
+setlocal iskeyword-=-
+cursor(1, 11)
+simplemulti#SelectAll()
+assert_equal([[1, 1, 4], [1, 11, 4]], Positions())
+setlocal iskeyword+=-
+simplemulti#SelectAll()
+assert_equal([[1, 11, 4]], Positions(),
+  "the cached scan survived an 'iskeyword' change")
+setlocal iskeyword-=-
+simplemulti#Clear()
+
+# If the new keyword grammar leaves zero occurrences, SelectAll must not keep
+# that dead word as a permanent session and ignore what the cursor moves to.
+setline(1, ['font-size other'])
+setlocal iskeyword-=-
+cursor(1, 1)
+simplemulti#SelectAll()
+assert_equal([[1, 1, 4]], Positions())
+setlocal iskeyword+=-
+simplemulti#SelectAll()
+assert_equal([], Positions())
+cursor(1, 11)
+simplemulti#SelectAll()
+assert_equal('other', simplemulti#GetState().word)
+assert_equal([[1, 11, 5]], Positions(),
+  'a zero-result word locked later SelectAll calls onto the old session')
+setlocal iskeyword-=-
 simplemulti#Clear()
 
 # A second buffer with the same word must not be served the first one's answer.
@@ -368,6 +426,54 @@ assert_equal(['alpha beta alpha', 'alpha tail', 'gamma alpha'], getline(1, 3),
 silent redo
 assert_equal(['X beta X', 'X tail', 'gamma X'], getline(1, 3),
   'the redo did not put the whole edit back either')
+bwipe!
+
+# --- 9. Vertical cursors keep their display column --------------------------
+# A byte column is not a screen column in front of a tab, and clamping to a
+# short line must not become the anchor for every line visited afterwards.
+new
+setlocal tabstop=8
+setline(1, ["\talpha", 'x', '        omega'])
+cursor(1, 2)
+assert_equal(9, virtcol('.'), 'the fixture must start after an eight-cell tab')
+simplemulti#Vertical(1)
+simplemulti#Vertical(1)
+assert_equal([[1, 2, 0], [2, 2, 0], [3, 9, 0]], Positions(),
+  'a tab or short row collapsed the vertical cursor column')
+simplemulti#Edit('insert', '>')
+assert_equal(["\t>alpha", 'x>', '        >omega'], getline(1, 3))
+bwipe!
+
+# Public calls can run before TextChanged is delivered.  Stale byte ranges are
+# discarded instead of editing unrelated text, and a buffer becoming
+# non-modifiable must not throw from setline().
+new
+setline(1, ['alpha one', 'alpha two'])
+cursor(1, 1)
+simplemulti#SelectAll()
+assert_equal(2, len(Positions()))
+setline(1, ['prefix alpha', 'alpha two'])
+var externally_changed = getline(1, 2)
+try
+  simplemulti#Edit('replace', 'X')
+catch
+  assert_report('editing stale selections threw: ' .. v:exception)
+endtry
+assert_equal(externally_changed, getline(1, 2),
+  'stale selection columns edited unrelated text')
+assert_equal([], Positions(), 'stale selections were not discarded')
+
+cursor(2, 1)
+simplemulti#SelectAll()
+setlocal nomodifiable
+try
+  simplemulti#Edit('replace', 'X')
+catch
+  assert_report('a non-modifiable buffer threw: ' .. v:exception)
+endtry
+assert_equal(externally_changed, getline(1, 2))
+setlocal modifiable
+simplemulti#Clear()
 bwipe!
 
 if !empty(v:errors)

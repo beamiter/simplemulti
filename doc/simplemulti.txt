@@ -11,7 +11,13 @@
 :SimpleMultiRemove           Remove the primary selection.
 :SimpleMultiClear            Clear selections.
 
+Vertical cursors retain their display column across tabs and short lines;
+edits on a line shorter than that column are clamped to its end.
+
 Default mappings are CTRL-N, CTRL-Up and CTRL-Down.  Set
 g:simplemulti_default_mappings to zero before loading to disable them.
+
+g:simplemulti_max_selections limits an all/next selection scan (default 1000).
+It must be a positive number; invalid values fall back to the default.
 
 vim:tw=78:ts=8:noet:ft=help:norl:
