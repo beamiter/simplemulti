@@ -33,10 +33,24 @@ nnoremap <silent> <Plug>(simplemulti-above) <ScriptCmd>simplemulti#Vertical(-1)<
 nnoremap <silent> <Plug>(simplemulti-below) <ScriptCmd>simplemulti#Vertical(1)<CR>
 nnoremap <silent> <Plug>(simplemulti-clear) <ScriptCmd>simplemulti#Clear()<CR>
 
+# A default key is installed only into a slot that is still free, and only when
+# the user has not already routed this <Plug> target somewhere of their own.
+# <C-n> in particular is Vim's own "one line down" in Normal mode, so taking it
+# unconditionally changed a motion every user already has muscle memory for --
+# and whether the plugin or the user won depended only on load order, which is
+# not a rule anyone can follow. maparg() answers "is this key still free";
+# hasmapto() answers "has the user already bound this action elsewhere", in
+# which case they do not also want the default key taken.
 if g:simplemulti_default_mappings
-  nmap <C-n> <Plug>(simplemulti-next)
-  nmap <C-Up> <Plug>(simplemulti-above)
-  nmap <C-Down> <Plug>(simplemulti-below)
+  if maparg('<C-n>', 'n') ==# '' && !hasmapto('<Plug>(simplemulti-next)', 'n')
+    nmap <C-n> <Plug>(simplemulti-next)
+  endif
+  if maparg('<C-Up>', 'n') ==# '' && !hasmapto('<Plug>(simplemulti-above)', 'n')
+    nmap <C-Up> <Plug>(simplemulti-above)
+  endif
+  if maparg('<C-Down>', 'n') ==# '' && !hasmapto('<Plug>(simplemulti-below)', 'n')
+    nmap <C-Down> <Plug>(simplemulti-below)
+  endif
 endif
 
 highlight default SimpleMultiSelection cterm=reverse gui=reverse
