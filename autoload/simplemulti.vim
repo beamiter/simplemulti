@@ -93,15 +93,12 @@ def Refresh()
   if state.painted_tick != b:changedtick
     # ...but "properties of ours can only exist where the previous Refresh()
     # put them" stops being true the moment the text moves, because Vim keeps
-    # text properties in the undo state.  Undo the :SimpleMultiReplace that
-    # Clear() stripped the highlights for and Vim puts every one of them back,
-    # on lines this state dict has since forgotten it ever painted; the next
-    # <C-n> elsewhere in the buffer would then leave them standing forever.
-    # Re-sourcing this file mid-session lands the same way: the fresh state
-    # from State() has no memory of what the previous one painted.  So the
-    # first Refresh() after any text change sweeps everything, and the presses
-    # after it -- which cannot change text, only selections -- narrow again.
-    # That is one whole-buffer sweep per session, not one per press.
+    # text properties in the undo state.  Invalidate() normally removes an
+    # undo-restored property as soon as TextChanged is delivered, but this is
+    # the backstop for a suppressed event and for re-sourcing mid-session: the
+    # fresh state has no memory of what the previous one painted.  The first
+    # Refresh() after any text change therefore sweeps everything; later
+    # presses, which cannot change text, narrow again.
     sweep_first = 1
     sweep_last = line('$')
   endif
@@ -447,8 +444,18 @@ export def Edit(kind: string, argument: string)
 enddef
 
 export def Clear()
+  var retired_properties = false
   if exists('b:simplemulti_state')
+    var previous = State()
+    retired_properties = !empty(previous.items) || previous.painted[0] > 0
     b:simplemulti_state = EmptyState()
+  endif
+  # Buffer variables are not part of the undo tree, but text properties are.
+  # Remember the undo sequence whose properties we are retiring so that an
+  # undo to an older state can remove them again without paying a whole-buffer
+  # property sweep after every unrelated edit for the rest of the session.
+  if retired_properties
+    b:simplemulti_retired_seq = get(undotree(), 'seq_cur', 0)
   endif
   # Dropping the cached scan here is not what keeps it correct -- the bufnr,
   # word and changedtick in its key do that -- it just stops a finished session
@@ -466,8 +473,28 @@ export def Invalidate()
     return
   endif
   var state = State()
-  if !empty(state.items) && state.changedtick != b:changedtick
+  if state.changedtick == b:changedtick
+    return
+  endif
+  if !empty(state.items)
     Clear()
+    return
+  endif
+
+  # Clear() deliberately forgets the selection state.  Undo may nevertheless
+  # restore the corresponding text properties from an older undo entry.  The
+  # sequence fence identifies precisely those older states; ordinary edits on
+  # top of the cleared state take the cheap path and only advance changedtick.
+  state.changedtick = b:changedtick
+  var retired_seq = get(b:, 'simplemulti_retired_seq', -1)
+  if type(retired_seq) == v:t_number
+      && retired_seq >= 0
+      && get(undotree(), 'seq_cur', retired_seq) < retired_seq
+    prop_remove({type: 'SimpleMultiSelection', all: true}, 1, line('$'))
+    prop_remove({type: 'SimpleMultiPrimary', all: true}, 1, line('$'))
+    state.painted = [0, 0]
+    state.painted_tick = b:changedtick
+    redraw
   endif
 enddef
 

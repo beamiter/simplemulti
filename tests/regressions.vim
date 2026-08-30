@@ -271,10 +271,8 @@ bwipe!
 
 # Vim keeps text properties in the undo state.  Undoing a :SimpleMultiReplace
 # therefore puts back every highlight Clear() stripped when the edit was
-# applied -- on lines the state dict no longer remembers painting, so a sweep
-# narrowed to what it does remember cannot reach them and they stand until the
-# next :SimpleMultiClear.  Refresh() sweeps the whole buffer once whenever
-# b:changedtick has moved since its last paint, which is what covers this.
+# applied, while the buffer-local selection state stays empty.  TextChanged
+# must retire those orphaned properties before another plugin action is needed.
 new
 setline(1, ['alpha beta', 'gamma alpha', 'delta'])
 # Seal the fixture into its own undo block so the undo below takes back the
@@ -291,6 +289,11 @@ assert_equal(['alpha beta', 'gamma alpha', 'delta'], getline(1, 3))
 assert_true(len(prop_list(1)) + len(prop_list(2)) > 0,
   'this test assumes undo restores text properties; if it stopped doing so the '
   .. 'assertion below would pass for the wrong reason')
+# A sourced headless test has no main-loop pass on which Vim would normally
+# deliver TextChanged after :undo, so deliver the pending event explicitly.
+doautocmd <nomodeline> TextChanged
+assert_equal(0, len(prop_list(1)) + len(prop_list(2)),
+  'undo left orphaned selections highlighted with an empty state')
 cursor(3, 1)
 simplemulti#SelectNext()
 assert_equal([[3, 1, 5]], Positions())
