@@ -1,6 +1,6 @@
-.PHONY: check defcompile test regressions
+.PHONY: check defcompile test regressions mappings
 
-check: defcompile test regressions
+check: defcompile test regressions mappings
 
 defcompile:
 	vim -N -u NONE -n -es -S tests/defcompile.vim
@@ -13,3 +13,6 @@ test:
 # quadratic scan to show up in.
 regressions:
 	vim -N -u NONE -n -es -S tests/regressions.vim
+
+mappings:
+	vim -N -u NONE -n -es -S tests/mappings.vim

@@ -502,6 +502,12 @@ export def GetState(): dict<any>
   return deepcopy(State())
 enddef
 
+export def OnWipe(buf: number)
+  if get(s_cache, 'bufnr', -1) == buf
+    s_cache = {}
+  endif
+enddef
+
 export def Health()
   var state = State()
   echomsg 'SimpleMulti health'

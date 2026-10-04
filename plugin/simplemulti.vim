@@ -15,6 +15,14 @@ endif
 g:simplemulti_default_mappings = get(g:, 'simplemulti_default_mappings', 1)
 g:simplemulti_max_selections = get(g:, 'simplemulti_max_selections', 1000)
 
+def DefaultMappings(): bool
+  var configured: any = g:simplemulti_default_mappings
+  if type(configured) == v:t_bool
+    return configured
+  endif
+  return type(configured) == v:t_number ? configured != 0 : true
+enddef
+
 command! SimpleMultiNext simplemulti#SelectNext()
 command! SimpleMultiAll simplemulti#SelectAll()
 command! SimpleMultiAbove simplemulti#Vertical(-1)
@@ -41,7 +49,7 @@ nnoremap <silent> <Plug>(simplemulti-clear) <ScriptCmd>simplemulti#Clear()<CR>
 # not a rule anyone can follow. maparg() answers "is this key still free";
 # hasmapto() answers "has the user already bound this action elsewhere", in
 # which case they do not also want the default key taken.
-if g:simplemulti_default_mappings
+if DefaultMappings()
   if maparg('<C-n>', 'n') ==# '' && !hasmapto('<Plug>(simplemulti-next)', 'n')
     nmap <C-n> <Plug>(simplemulti-next)
   endif
@@ -60,5 +68,6 @@ simplemulti#Setup()
 augroup SimpleMulti
   autocmd!
   autocmd TextChanged,TextChangedI * simplemulti#Invalidate()
+  autocmd BufWipeout * simplemulti#OnWipe(str2nr(expand('<abuf>')))
   autocmd ColorScheme * call simplemulti#SetupHighlights()
 augroup END

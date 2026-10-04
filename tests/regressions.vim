@@ -479,6 +479,74 @@ setlocal modifiable
 simplemulti#Clear()
 bwipe!
 
+# --- 10. Wipeout drops the occurrence cache --------------------------------
+# s_cache is keyed on bufnr().  Vim reuses buffer numbers after a wipe; a
+# leftover cache entry could serve the old buffer's occurrences (or just hold
+# a thousand-item list until the next word is picked).
+new
+setline(1, ['alpha one', 'alpha two'])
+cursor(1, 1)
+simplemulti#SelectAll()
+assert_equal(2, len(Positions()))
+var wiped = bufnr()
+bwipe!
+new
+setline(1, ['beta beta beta'])
+cursor(1, 1)
+simplemulti#SelectAll()
+assert_equal('beta', simplemulti#GetState().word,
+  'a wiped buffer''s cached scan was served to a new buffer')
+assert_equal(3, len(Positions()))
+simplemulti#Clear()
+bwipe!
+
+# ignorecase must not turn Alpha into alpha.  The scan is \C.
+new
+set ignorecase
+setline(1, ['Alpha', 'alpha', 'ALPHA'])
+cursor(1, 1)
+simplemulti#SelectAll()
+assert_equal('Alpha', simplemulti#GetState().word)
+assert_equal(1, len(Positions()), "'ignorecase' leaked into occurrence matching")
+set noignorecase
+simplemulti#Clear()
+bwipe!
+
+# An empty buffer and a cursor on a blank line select nothing.
+new
+simplemulti#SelectNext()
+assert_equal(0, len(simplemulti#GetState().items),
+  'SelectNext on an empty buffer created a selection')
+setline(1, ['', 'alpha'])
+cursor(1, 1)
+simplemulti#SelectNext()
+assert_equal(0, len(simplemulti#GetState().items),
+  'SelectNext on a blank line selected a word on another line')
+simplemulti#Clear()
+
+# Vertical off the top of the buffer keeps the original cursor and does not
+# throw.
+setline(1, ['one', 'two'])
+cursor(1, 1)
+simplemulti#Vertical(-1)
+assert_equal(1, len(Positions()),
+  'C-Up on the first line dropped the original cursor')
+assert_equal(1, Positions()[0][0])
+simplemulti#Clear()
+bwipe!
+
+# SelectNext on a nomodifiable buffer is a silent no-op.
+new
+setline(1, ['alpha alpha'])
+cursor(1, 1)
+setlocal nomodifiable
+simplemulti#SelectNext()
+assert_equal(0, len(simplemulti#GetState().items),
+  'SelectNext ignored nomodifiable')
+setlocal modifiable
+simplemulti#Clear()
+bwipe!
+
 if !empty(v:errors)
   for error in v:errors
     echomsg error

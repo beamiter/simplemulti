@@ -31,6 +31,17 @@ assert_equal([' ', ''], getline(1, 2))
 
 assert_equal(2, exists(':SimpleMultiNext'))
 assert_match('simplemulti', maparg('<C-n>', 'n'))
+assert_true(exists('#SimpleMulti#ColorScheme'),
+  'no ColorScheme autocmd restores selection highlights')
+assert_true(exists('#SimpleMulti#BufWipeout'),
+  'no BufWipeout autocmd drops the occurrence cache')
+
+try
+  simplemulti#Edit('nope', 'x')
+catch
+  assert_report('an unknown edit kind threw: ' .. v:exception)
+endtry
+
 if !empty(v:errors)
   writefile(v:errors, ROOT .. '/tests/errors.log')
   cquit
