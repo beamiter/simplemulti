@@ -42,6 +42,13 @@ catch
   assert_report('an unknown edit kind threw: ' .. v:exception)
 endtry
 
+b:simplemulti_state = {keys: {}, painted: [], painted_tick: 0}
+try
+  simplemulti#Clear()
+catch
+  assert_report('an incomplete restored selection state threw: ' .. v:exception)
+endtry
+
 if !empty(v:errors)
   writefile(v:errors, ROOT .. '/tests/errors.log')
   cquit

@@ -38,8 +38,16 @@ def State(): dict<any>
   # no `painted` and no `painted_tick`, and every access to them would throw
   # E716.  Treat a dict of the wrong shape the same as no dict at all.
   if !exists('b:simplemulti_state') || type(b:simplemulti_state) != v:t_dict
-      || !has_key(b:simplemulti_state, 'keys') || !has_key(b:simplemulti_state, 'painted')
-      || !has_key(b:simplemulti_state, 'painted_tick')
+      || type(get(b:simplemulti_state, 'items', 0)) != v:t_list
+      || type(get(b:simplemulti_state, 'keys', 0)) != v:t_dict
+      || type(get(b:simplemulti_state, 'painted', 0)) != v:t_list
+      || len(get(b:simplemulti_state, 'painted', [])) != 2
+      || type(b:simplemulti_state.painted[0]) != v:t_number
+      || type(b:simplemulti_state.painted[1]) != v:t_number
+      || type(get(b:simplemulti_state, 'painted_tick', '')) != v:t_number
+      || type(get(b:simplemulti_state, 'changedtick', '')) != v:t_number
+      || type(get(b:simplemulti_state, 'primary', '')) != v:t_number
+      || type(get(b:simplemulti_state, 'word', 0)) != v:t_string
     b:simplemulti_state = EmptyState()
   endif
   return b:simplemulti_state
