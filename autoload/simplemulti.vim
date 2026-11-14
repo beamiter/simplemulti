@@ -433,6 +433,12 @@ export def Edit(kind: string, argument: string)
   var value = argument
   if empty(value) && kind !=# 'delete'
     value = input($'SimpleMulti {kind}: ')
+    # input() returns an empty string for Escape as well as an empty answer.
+    # Neither is permission to replace every selection with nothing. Keep the
+    # session intact so the user can retry; Delete is the explicit erase path.
+    if empty(value)
+      return
+    endif
   endif
   var items = sort(deepcopy(state.items), CompareDescending)
   s_applying = true

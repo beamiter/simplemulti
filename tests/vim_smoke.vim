@@ -29,6 +29,37 @@ assert_equal(3, len(simplemulti#GetState().items))
 simplemulti#Edit('delete', '')
 assert_equal([' ', ''], getline(1, 2))
 
+# Empty/cancelled prompts must not change text or discard the live session.
+# 'n' queues unmapped input for input(); typed Escape can flush typeahead and
+# make a headless Vim exit before the assertions are reached.
+for kind in ['replace', 'insert', 'append']
+  for answer in ["\<Esc>", "\<CR>"]
+    setline(1, ['keep keep', 'keep'])
+    cursor(1, 1)
+    simplemulti#SelectAll()
+    var before = simplemulti#GetState()
+    var tick = b:changedtick
+    feedkeys(answer, 'n')
+    simplemulti#Edit(kind, '')
+    assert_equal(['keep keep', 'keep'], getline(1, 2),
+      'cancelled ' .. kind .. ' changed text')
+    assert_equal(tick, b:changedtick, 'cancelled edit created a text change')
+    assert_equal(before, simplemulti#GetState(),
+      'cancelled edit discarded the selection session')
+    simplemulti#Clear()
+  endfor
+endfor
+# A confirmed nonempty answer still applies, and explicit Delete still erases.
+cursor(1, 1)
+simplemulti#SelectAll()
+feedkeys("new\<CR>", 'n')
+simplemulti#Edit('replace', '')
+assert_equal(['new new', 'new'], getline(1, 2))
+cursor(1, 1)
+simplemulti#SelectAll()
+simplemulti#Edit('delete', '')
+assert_equal([' ', ''], getline(1, 2))
+
 assert_equal(2, exists(':SimpleMultiNext'))
 assert_match('simplemulti', maparg('<C-n>', 'n'))
 assert_true(exists('#SimpleMulti#ColorScheme'),

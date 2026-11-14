@@ -11,6 +11,10 @@
 :SimpleMultiRemove           Remove the primary selection.
 :SimpleMultiClear            Clear selections.
 
+Replace, Insert and Append prompt when no text is supplied. Escape or an
+empty answer cancels without changing text or clearing selections. To erase
+selected text, use :SimpleMultiDelete explicitly.
+
 Vertical cursors retain their display column across tabs and short lines;
 edits on a line shorter than that column are clamped to its end.
 
