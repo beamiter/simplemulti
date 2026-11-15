@@ -13,7 +13,9 @@
 
 Replace, Insert and Append prompt when no text is supplied. Escape or an
 empty answer cancels without changing text or clearing selections. To erase
-selected text, use :SimpleMultiDelete explicitly.
+selected text, use :SimpleMultiDelete explicitly. If the buffer, its text,
+selections or writable status change while a prompt is open, confirmation
+cancels the edit rather than applying stale selections.
 
 Vertical cursors retain their display column across tabs and short lines;
 edits on a line shorter than that column are clamped to its end.

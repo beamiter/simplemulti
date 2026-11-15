@@ -1,6 +1,6 @@
-.PHONY: check defcompile test regressions mappings
+.PHONY: check defcompile test regressions mappings prompt-changes
 
-check: defcompile test regressions mappings
+check: defcompile test regressions mappings prompt-changes
 
 defcompile:
 	vim -N -u NONE -n -i NONE -es -S tests/defcompile.vim
@@ -16,3 +16,6 @@ regressions:
 
 mappings:
 	vim -N -u NONE -n -i NONE -es -S tests/mappings.vim
+
+prompt-changes:
+	python3 tests/prompt_changes.py

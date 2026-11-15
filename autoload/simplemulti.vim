@@ -432,11 +432,24 @@ export def Edit(kind: string, argument: string)
   endif
   var value = argument
   if empty(value) && kind !=# 'delete'
+    # input() runs timers while waiting. A reload, buffer switch or selection
+    # reset during the prompt must not apply the old byte ranges to new text.
+    var origin = bufnr()
+    var tick = b:changedtick
+    var selected = deepcopy(state.items)
     value = input($'SimpleMulti {kind}: ')
     # input() returns an empty string for Escape as well as an empty answer.
     # Neither is permission to replace every selection with nothing. Keep the
     # session intact so the user can retry; Delete is the explicit erase path.
     if empty(value)
+      return
+    endif
+    if bufnr() != origin
+      return
+    endif
+    var current = ActionState()
+    if current isnot state || b:changedtick != tick
+        || current.items != selected || !&l:modifiable || &l:readonly
       return
     endif
   endif
