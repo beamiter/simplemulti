@@ -229,49 +229,65 @@ enddef
 # was rewritten for, so it is not the case to regress.  What made the per-press
 # cost go away was not scanning faster but not scanning again: see
 # CachedOccurrences().
-def Occurrences(word: string): list<dict<any>>
+def ScanOccurrences(pattern: string, width: number, maximum: number,
+    first: list<number>, last: list<number>): list<dict<any>>
   var out: list<dict<any>> = []
-  if empty(word)
-    return out
-  endif
-  var pattern = WordPattern(word)
-  var maximum = MaximumSelections()
-  for lnum in range(1, line('$'))
+  var lnum = first[0]
+  while lnum <= last[0]
     var text = getline(lnum)
-    var start = 0
-    while start < strlen(text)
-      var found = match(text, pattern, start)
-      if found < 0
+    var start = lnum == first[0] ? first[1] : 0
+    var stop = lnum == last[0] && last[1] >= 0 ? last[1] : strlen(text)
+    while start < stop
+      # Keep the context before a nonzero start so a word boundary isn't
+      # manufactured by truncating the line at the cursor.
+      var found = match(text, pattern, start, 1)
+      if found < 0 || found >= stop
         break
       endif
-      add(out, {lnum: lnum, col: found + 1, length: strlen(word)})
+      add(out, {lnum: lnum, col: found + 1, length: width})
       if len(out) >= maximum
         return out
       endif
-      start = found + max([1, strlen(word)])
+      start = found + width
     endwhile
-  endfor
+    lnum += 1
+  endwhile
   return out
 enddef
 
-def CachedOccurrences(word: string): list<dict<any>>
-  # The cap belongs in the key as much as the buffer, the word and the text do:
-  # it is an input to Occurrences(), not a property of the buffer, and raising
-  # it is the one way a user changes the answer without touching a character.
-  # Without it, `:SimpleMultiAll` with the cap at 5 and then again with it at 40
-  # comes back with 5 -- a truncated selection, which is worse than the scan the
-  # cache saved.
+def Occurrences(word: string, maximum: number, first: list<number>): list<dict<any>>
+  if empty(word)
+    return []
+  endif
+  var pattern = WordPattern(word)
+  var width = strlen(word)
+  var tail = ScanOccurrences(pattern, width, maximum, first, [line('$'), -1])
+  if len(tail) == maximum || first == [1, 0]
+    return tail
+  endif
+  # The wrapped prefix is exclusive of the seed, even within the same line.
+  # Keep the result in buffer order so SelectNext's walk after the primary
+  # works independently of which side of the wrap it is on.
+  var head = ScanOccurrences(pattern, width, maximum - len(tail), [1, 0], first)
+  return extend(head, tail)
+enddef
+
+def CachedOccurrences(word: string, first: list<number> = [1, 0]): list<dict<any>>
+  # The cap and scan origin belong in the key as much as the buffer, word and
+  # text do. SelectAll scans from line one; a running SelectNext session
+  # starts where its first accepted occurrence was, then wraps only at EOF.
   var maximum = MaximumSelections()
   if get(s_cache, 'bufnr', -1) == bufnr()
       && get(s_cache, 'word', '') ==# word
       && get(s_cache, 'changedtick', -1) == b:changedtick
       && get(s_cache, 'iskeyword', '') ==# &l:iskeyword
       && get(s_cache, 'maximum', -1) == maximum
+      && get(s_cache, 'first', []) == first
     return s_cache.items
   endif
-  var items = Occurrences(word)
+  var items = Occurrences(word, maximum, first)
   s_cache = {bufnr: bufnr(), word: word, changedtick: b:changedtick,
-    iskeyword: &l:iskeyword, maximum: maximum, items: items}
+    iskeyword: &l:iskeyword, maximum: maximum, first: first, items: items}
   return items
 enddef
 
@@ -303,7 +319,13 @@ export def SelectNext()
     state.word = first.word
     AddItem(first)
   endif
-  var occurrences = CachedOccurrences(state.word)
+  # The initial selection counts too, even if it was outside the old
+  # first-in-buffer scan window, or the cap was lowered during a session.
+  if len(state.items) >= MaximumSelections()
+    return
+  endif
+  var seed = state.items[0]
+  var occurrences = CachedOccurrences(state.word, [seed.lnum, seed.col - 1])
   if empty(occurrences)
     return
   endif

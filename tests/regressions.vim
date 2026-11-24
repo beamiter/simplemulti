@@ -138,9 +138,8 @@ simplemulti#Clear()
 bwipe!
 
 # --- 3. The selection cap ----------------------------------------------------
-# Occurrences() is the only thing that enforces the cap, and SelectNext() now
-# reads a cached copy of its result rather than calling it each press.  If the
-# cache ever grew its own path to the buffer, this is what would catch it.
+# The scan and SelectNext's live selection count both enforce the cap. Once
+# a scan is cached, painting and removing selections must not corrupt it.
 new
 var dense: list<string> = []
 for i in range(400)
@@ -210,6 +209,76 @@ catch
   assert_report('a mistyped selection cap threw: ' .. v:exception)
 endtry
 assert_equal(3, len(Positions()), 'a mistyped cap did not fall back to the default')
+g:simplemulti_max_selections = 1000
+simplemulti#Clear()
+bwipe!
+
+# Starting beyond the initial page of matches must not jump to the top to
+# fill it. The first selection itself consumes a slot.
+new
+setline(1, repeat(['target'], 6))
+&l:undolevels = &l:undolevels
+g:simplemulti_max_selections = 2
+cursor(4, 1)
+simplemulti#SelectNext()
+assert_equal([[4, 1, 6], [5, 1, 6]], Positions(),
+  'the first press must grow forward from the cursor, not jump to line one')
+for i in range(4)
+  simplemulti#SelectNext()
+endfor
+assert_equal([[4, 1, 6], [5, 1, 6]], Positions(),
+  'a seed outside the first buffer-order page still counts toward the cap')
+simplemulti#RemoveCurrent()
+assert_equal([[4, 1, 6]], Positions(), 'removing the primary should free a slot')
+assert_equal([], prop_list(5), 'the removed primary retained a highlight')
+simplemulti#SelectNext()
+assert_equal([[4, 1, 6], [5, 1, 6]], Positions(),
+  'a removed forward occurrence can be selected again')
+simplemulti#Edit('replace', 'new')
+assert_equal(['target', 'target', 'target', 'new', 'new', 'target'], getline(1, 6))
+silent undo
+assert_equal(repeat(['target'], 6), getline(1, 6), 'one undo must restore both replacements')
+doautocmd <nomodeline> TextChanged
+assert_equal([], Positions())
+assert_equal([], prop_list(4) + prop_list(5))
+bwipe!
+
+new
+setline(1, ['target target', 'target target'])
+cursor(2, 8)
+simplemulti#SelectNext()
+assert_equal([[2, 8, 6], [1, 1, 6]], Positions(),
+  'the last occurrence wraps to the first occurrence at EOF')
+simplemulti#Clear()
+g:simplemulti_max_selections = 1
+cursor(2, 8)
+for i in range(3)
+  simplemulti#SelectNext()
+endfor
+assert_equal([[2, 8, 6]], Positions(), 'one slot must hold only the cursor occurrence')
+simplemulti#Clear()
+
+# Both halves of the scan can occur on the cursor line. Moving to the next
+# byte-column there takes precedence over a match on an earlier line.
+g:simplemulti_max_selections = 2
+setline(2, 'target target target')
+cursor(2, 8)
+simplemulti#SelectNext()
+assert_equal([[2, 8, 6], [2, 15, 6]], Positions())
+simplemulti#SelectAll()
+assert_equal([[1, 1, 6], [1, 8, 6]], Positions(),
+  'SelectAll must retain its buffer-order cap after using the rotated cache')
+simplemulti#Clear()
+cursor(2, 8)
+simplemulti#SelectNext()
+g:simplemulti_max_selections = 3
+simplemulti#SelectNext()
+assert_equal([[2, 8, 6], [2, 15, 6], [1, 1, 6]], Positions(),
+  'raising the cap must refresh the clockwise cache, including a wrapped match')
+g:simplemulti_max_selections = 2
+simplemulti#SelectNext()
+assert_equal([[2, 8, 6], [2, 15, 6], [1, 1, 6]], Positions(),
+  'reducing the cap mid-session must stop additions without dropping selections')
 g:simplemulti_max_selections = 1000
 simplemulti#Clear()
 bwipe!
